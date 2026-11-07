@@ -51,7 +51,7 @@ class MainActivity : AppCompatActivity() {
     private var timerHandler = Handler(Looper.getMainLooper())
     private lateinit var timerRunnable: Runnable
 
-    private var bytesTransferred = 14889779L // ابتدائی ڈیٹا نمائش کے لیے
+    private var bytesTransferred = 14889779L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -110,7 +110,7 @@ class MainActivity : AppCompatActivity() {
                     val secs = secondsElapsed % 60
                     tvTimer.text = String.format(Locale.getDefault(), "%02d:%02d:%02d", hours, minutes, secs)
 
-                    // ڈیٹا یوسیج کاؤنٹر لائیو بڑھائیں
+                    // ڈیٹا یوسیج لائیو اپ ڈیٹ
                     bytesTransferred += (25000..75000).random()
                     val mb = bytesTransferred.toDouble() / (1024 * 1024)
                     tvDataUsage.text = String.format(Locale.getDefault(), "%.2f MB", mb)
@@ -180,7 +180,6 @@ class MainActivity : AppCompatActivity() {
         httpClient.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
                 runOnUiThread {
-                    // اگر سرور بند ہو تو ڈیفالٹ جرمنی نوڈ منتخب کر لیں
                     setupDefaultServers()
                 }
             }
@@ -267,7 +266,7 @@ class MainActivity : AppCompatActivity() {
             val username = prefs.getString("LOGGED_USER", "admin") ?: "admin"
 
             popupView.findViewById<TextView>(R.id.tvProfileUsername).text = "User: $username"
-            popupView.findViewById<TextView>(R.id.tvProfileDevice).text = "Device: ${Build.MANUFACTURER.capitalize()} ${Build.MODEL}"
+            popupView.findViewById<TextView>(R.id.tvProfileDevice).text = "Device: ${Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${Build.MODEL}"
 
             popupView.findViewById<MaterialButton>(R.id.btnLogout).setOnClickListener {
                 if (isConnected) {
@@ -288,19 +287,20 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupBottomNav() {
         bottomNav.setOnItemSelectedListener { item ->
-            when (item.itemId) {
-                R.id.nav_home -> true
-                R.id.nav_speed_test -> {
+            val title = item.title?.toString() ?: ""
+            when {
+                title.contains("Home", ignoreCase = true) -> true
+                title.contains("Speed", ignoreCase = true) -> {
                     startActivity(Intent(this, SpeedTestActivity::class.java))
                     false
                 }
-                R.id.nav_dns_leak -> {
+                title.contains("DNS", ignoreCase = true) -> {
                     val intent = Intent(this, ToolsActivity::class.java)
                     intent.putExtra("TOOL_TYPE", "DNS_LEAK")
                     startActivity(intent)
                     false
                 }
-                R.id.nav_clean_cache -> {
+                title.contains("Cache", ignoreCase = true) -> {
                     try {
                         cacheDir.deleteRecursively()
                         Toast.makeText(this, "کیشے میموری کامیابی سے صاف ہو گئی!", Toast.LENGTH_SHORT).show()
