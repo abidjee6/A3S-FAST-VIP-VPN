@@ -36,8 +36,8 @@ dependencies {
     implementation 'com.google.android.material:material:1.11.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
     
-    // WireGuard Android Backend
-    implementation 'com.wireguard.android:tunnel:1.0.20230707'
+    // WireGuard Android Backend (Stable Version)
+    implementation 'com.wireguard.android:tunnel:1.0.20211029'
     
     // Network & JSON Parsing
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
