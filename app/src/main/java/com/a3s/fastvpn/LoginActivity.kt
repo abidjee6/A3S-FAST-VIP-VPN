@@ -4,8 +4,11 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.view.View
-import android.widget.*
+import android.widget.ProgressBar
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import com.google.android.material.button.MaterialButton
+import com.google.android.material.textfield.TextInputEditText
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -15,72 +18,89 @@ import java.io.IOException
 class LoginActivity : AppCompatActivity() {
 
     private val httpClient = OkHttpClient()
+    private val BASE_URL = "http://2.31.89.14:3000"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_login)
 
-        val etUser = findViewById<EditText>(R.id.etUsername)
-        val etPass = findViewById<EditText>(R.id.etPassword)
-        val btnLogin = findViewById<Button>(R.id.btnLogin)
-        val pbLoading = findViewById<ProgressBar>(R.id.pbLoginLoading)
+        val etUsername = findViewById<TextInputEditText>(R.id.etUsername)
+        val etPassword = findViewById<TextInputEditText>(R.id.etPassword)
+        val btnLogin = findViewById<MaterialButton>(R.id.btnLogin)
+        val progressBar = findViewById<ProgressBar>(R.id.progressBar)
 
         btnLogin.setOnClickListener {
-            val user = etUser.text.toString().trim()
-            val pass = etPass.text.toString().trim()
+            val username = etUsername.text.toString().trim()
+            val password = etPassword.text.toString().trim()
 
-            if (user.isEmpty() || pass.isEmpty()) {
-                Toast.makeText(this, "Please enter Username and Password", Toast.LENGTH_SHORT).show()
+            if (username.isEmpty() || password.isEmpty()) {
+                Toast.makeText(this, "براہ کرم یوزر نیم اور پاس ورڈ درج کریں", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
 
             btnLogin.isEnabled = false
-            pbLoading.visibility = View.VISIBLE
+            progressBar.visibility = View.VISIBLE
 
-            val payload = JSONObject().apply {
-                put("username", user)
-                put("password", pass)
-            }.toString()
+            // JSON پے لوڈ برائے ڈیٹا بیس تصدیق
+            val jsonPayload = JSONObject().apply {
+                put("username", username)
+                put("password", password)
+            }
 
-            val body = payload.toRequestBody("application/json".toMediaTypeOrNull())
+            val requestBody = jsonPayload.toString().toRequestBody("application/json; charset=utf-8".toMediaTypeOrNull())
+
             val request = Request.Builder()
-                .url("http://2.31.89.14:3000/api/auth/login")
-                .post(body)
+                .url("$BASE_URL/api/auth/login")
+                .post(requestBody)
+                .addHeader("Content-Type", "application/json")
+                .addHeader("Accept", "application/json")
                 .build()
 
             httpClient.newCall(request).enqueue(object : Callback {
                 override fun onFailure(call: Call, e: IOException) {
                     runOnUiThread {
                         btnLogin.isEnabled = true
-                        pbLoading.visibility = View.GONE
-                        Toast.makeText(this@LoginActivity, "Connection Error to Server", Toast.LENGTH_SHORT).show()
+                        progressBar.visibility = View.GONE
+                        Toast.makeText(this@LoginActivity, "سرور سے رابطہ نہ ہو سکا: ${e.message}", Toast.LENGTH_LONG).show()
                     }
                 }
 
                 override fun onResponse(call: Call, response: Response) {
-                    val res = response.body?.string() ?: ""
+                    val rawResponse = response.body?.string() ?: ""
+
                     runOnUiThread {
                         btnLogin.isEnabled = true
-                        pbLoading.visibility = View.GONE
+                        progressBar.visibility = View.GONE
+
                         try {
-                            val json = JSONObject(res)
-                            if (json.optBoolean("success", false) || json.optString("status") == "success") {
-                                val config = json.optString("wg_config", "")
-                                val prefs = getSharedPreferences("a3s_vpn_prefs", Context.MODE_PRIVATE)
+                            if (!response.isSuccessful && !rawResponse.trim().startsWith("{")) {
+                                Toast.makeText(this@LoginActivity, "سرور ایرر (${response.code})", Toast.LENGTH_SHORT).show()
+                                return@runOnUiThread
+                            }
+
+                            val result = LoginResponse.parse(rawResponse)
+
+                            if (result.success) {
+                                // سیشن اور ڈیٹا لوکل اسٹوریج میں محفوظ کریں
+                                val prefs = getSharedPreferences("A3S_VPN_PREFS", Context.MODE_PRIVATE)
                                 prefs.edit().apply {
-                                    putBoolean("is_logged_in", true)
-                                    putString("username", user)
-                                    putString("wg_config", config)
+                                    putBoolean("IS_LOGGED_IN", true)
+                                    putString("LOGGED_USER", result.username ?: username)
+                                    putString("AUTH_TOKEN", result.token ?: "")
+                                    putBoolean("IS_VIP", result.isVip)
                                     apply()
                                 }
-                                Toast.makeText(this@LoginActivity, "Login Successful", Toast.LENGTH_SHORT).show()
-                                startActivity(Intent(this@LoginActivity, MainActivity::class.java))
+
+                                Toast.makeText(this@LoginActivity, "لاگ ان کامیاب!", Toast.LENGTH_SHORT).show()
+                                val intent = Intent(this@LoginActivity, MainActivity::class.java)
+                                intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                                startActivity(intent)
                                 finish()
                             } else {
-                                Toast.makeText(this@LoginActivity, json.optString("message", "Invalid Login"), Toast.LENGTH_LONG).show()
+                                Toast.makeText(this@LoginActivity, result.message, Toast.LENGTH_LONG).show()
                             }
                         } catch (e: Exception) {
-                            Toast.makeText(this@LoginActivity, "Response parsing error", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(this@LoginActivity, "رسپانس پارسنگ ایرر: سرور کا جواب درست نہیں تھا", Toast.LENGTH_LONG).show()
                         }
                     }
                 }
