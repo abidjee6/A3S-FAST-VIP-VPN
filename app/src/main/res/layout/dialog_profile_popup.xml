@@ -5,41 +5,46 @@
     android:layout_height="wrap_content"
     android:background="#111625"
     android:orientation="vertical"
-    android:padding="20dp">
+    android:padding="24dp">
+
+    <View
+        android:layout_width="40dp"
+        android:layout_height="4dp"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginBottom="16dp"
+        android:background="#334155" />
 
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="ACCOUNT DETAILS"
-        android:letterSpacing="0.08"
         android:textColor="#FFC107"
-        android:textSize="15sp"
+        android:textSize="18sp"
         android:textStyle="bold" />
 
     <TextView
-        android:id="@+id/tvPopupUsername"
+        android:id="@+id/tvProfileUsername"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="12dp"
         android:text="User: admin"
         android:textColor="#FFFFFF"
-        android:textSize="16sp"
-        android:textStyle="bold" />
+        android:textSize="15sp" />
 
     <TextView
-        android:id="@+id/tvPopupDevice"
+        android:id="@+id/tvProfileDevice"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
-        android:text="Active Device: Android"
+        android:layout_marginTop="6dp"
+        android:text="Device: Android Device"
         android:textColor="#94A3B8"
-        android:textSize="13sp" />
+        android:textSize="14sp" />
 
     <com.google.android.material.button.MaterialButton
-        android:id="@+id/btnPopupLogout"
+        android:id="@+id/btnLogout"
         android:layout_width="match_parent"
         android:layout_height="50dp"
-        android:layout_marginTop="24dp"
+        android:layout_marginTop="20dp"
         android:backgroundTint="#D32F2F"
         android:text="LOGOUT"
         android:textColor="#FFFFFF"
