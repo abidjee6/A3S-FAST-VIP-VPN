@@ -41,70 +41,101 @@ class LoginActivity : AppCompatActivity() {
             btnLogin.isEnabled = false
             progressBar.visibility = View.VISIBLE
 
-            // JSON پے لوڈ برائے ڈیٹا بیس تصدیق
-            val jsonPayload = JSONObject().apply {
-                put("username", username)
-                put("password", password)
-            }
-
-            val requestBody = jsonPayload.toString().toRequestBody("application/json; charset=utf-8".toMediaTypeOrNull())
-
-            val request = Request.Builder()
-                .url("$BASE_URL/api/auth/login")
-                .post(requestBody)
-                .addHeader("Content-Type", "application/json")
-                .addHeader("Accept", "application/json")
-                .build()
-
-            httpClient.newCall(request).enqueue(object : Callback {
-                override fun onFailure(call: Call, e: IOException) {
-                    runOnUiThread {
-                        btnLogin.isEnabled = true
-                        progressBar.visibility = View.GONE
-                        Toast.makeText(this@LoginActivity, "سرور سے رابطہ نہ ہو سکا: ${e.message}", Toast.LENGTH_LONG).show()
-                    }
-                }
-
-                override fun onResponse(call: Call, response: Response) {
-                    val rawResponse = response.body?.string() ?: ""
-
-                    runOnUiThread {
-                        btnLogin.isEnabled = true
-                        progressBar.visibility = View.GONE
-
-                        try {
-                            if (!response.isSuccessful && !rawResponse.trim().startsWith("{")) {
-                                Toast.makeText(this@LoginActivity, "سرور ایرر (${response.code})", Toast.LENGTH_SHORT).show()
-                                return@runOnUiThread
+            // سب سے پہلے پچھلی ورکنگ ایپ کا بنیادی روٹ /api/login ٹرائی کریں
+            sendLoginRequest(username, password, "/api/login") { success ->
+                if (!success) {
+                    // اگر /api/login پر 404 آئے تو بیک اپ روٹ /login ٹرائی کریں
+                    sendLoginRequest(username, password, "/login") { finalSuccess ->
+                        if (!finalSuccess) {
+                            runOnUiThread {
+                                btnLogin.isEnabled = true
+                                progressBar.visibility = View.GONE
+                                Toast.makeText(this@LoginActivity, "سرور روٹ نہیں ملا (404 Not Found)", Toast.LENGTH_LONG).show()
                             }
-
-                            val result = LoginResponse.parse(rawResponse)
-
-                            if (result.success) {
-                                // سیشن اور ڈیٹا لوکل اسٹوریج میں محفوظ کریں
-                                val prefs = getSharedPreferences("A3S_VPN_PREFS", Context.MODE_PRIVATE)
-                                prefs.edit().apply {
-                                    putBoolean("IS_LOGGED_IN", true)
-                                    putString("LOGGED_USER", result.username ?: username)
-                                    putString("AUTH_TOKEN", result.token ?: "")
-                                    putBoolean("IS_VIP", result.isVip)
-                                    apply()
-                                }
-
-                                Toast.makeText(this@LoginActivity, "لاگ ان کامیاب!", Toast.LENGTH_SHORT).show()
-                                val intent = Intent(this@LoginActivity, MainActivity::class.java)
-                                intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-                                startActivity(intent)
-                                finish()
-                            } else {
-                                Toast.makeText(this@LoginActivity, result.message, Toast.LENGTH_LONG).show()
-                            }
-                        } catch (e: Exception) {
-                            Toast.makeText(this@LoginActivity, "رسپانس پارسنگ ایرر: سرور کا جواب درست نہیں تھا", Toast.LENGTH_LONG).show()
                         }
                     }
                 }
-            })
+            }
         }
+    }
+
+    private fun sendLoginRequest(user: String, pass: String, endpoint: String, callback: (Boolean) -> Unit) {
+        val btnLogin = findViewById<MaterialButton>(R.id.btnLogin)
+        val progressBar = findViewById<ProgressBar>(R.id.progressBar)
+
+        val jsonPayload = JSONObject().apply {
+            put("username", user)
+            put("password", pass)
+        }
+
+        val requestBody = jsonPayload.toString().toRequestBody("application/json; charset=utf-8".toMediaTypeOrNull())
+
+        val request = Request.Builder()
+            .url("$BASE_URL$endpoint")
+            .post(requestBody)
+            .addHeader("Content-Type", "application/json")
+            .addHeader("Accept", "application/json")
+            .build()
+
+        httpClient.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                runOnUiThread {
+                    btnLogin.isEnabled = true
+                    progressBar.visibility = View.GONE
+                    Toast.makeText(this@LoginActivity, "سرور سے رابطہ نہ ہو سکا: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+                callback(false)
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                val statusCode = response.code
+                val rawResponse = response.body?.string() ?: ""
+
+                if (statusCode == 404) {
+                    // اگر یہ روٹ سرور پر نہیں ہے تو دوسرے روٹ کی طرف بڑھیں
+                    callback(false)
+                    return
+                }
+
+                runOnUiThread {
+                    btnLogin.isEnabled = true
+                    progressBar.visibility = View.GONE
+
+                    if (statusCode == 401 || statusCode == 403) {
+                        Toast.makeText(this@LoginActivity, "غلط یوزر نیم یا پاس ورڈ", Toast.LENGTH_LONG).show()
+                        callback(true)
+                        return@runOnUiThread
+                    }
+
+                    try {
+                        val result = LoginResponse.parse(rawResponse)
+
+                        if (result.success || statusCode in 200..299) {
+                            val prefs = getSharedPreferences("A3S_VPN_PREFS", Context.MODE_PRIVATE)
+                            prefs.edit().apply {
+                                putBoolean("IS_LOGGED_IN", true)
+                                putString("LOGGED_USER", result.username ?: user)
+                                putString("AUTH_TOKEN", result.token ?: "")
+                                putBoolean("IS_VIP", result.isVip)
+                                apply()
+                            }
+
+                            Toast.makeText(this@LoginActivity, "لاگ ان کامیاب!", Toast.LENGTH_SHORT).show()
+                            val intent = Intent(this@LoginActivity, MainActivity::class.java)
+                            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                            startActivity(intent)
+                            finish()
+                            callback(true)
+                        } else {
+                            Toast.makeText(this@LoginActivity, result.message, Toast.LENGTH_LONG).show()
+                            callback(true)
+                        }
+                    } catch (e: Exception) {
+                        Toast.makeText(this@LoginActivity, "لاگ ان رسپانس ایرر: $rawResponse", Toast.LENGTH_LONG).show()
+                        callback(true)
+                    }
+                }
+            }
+        })
     }
 }
