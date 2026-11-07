@@ -5,18 +5,16 @@
     android:layout_height="match_parent"
     android:background="#0A0D14">
 
-    <!-- Top Bar -->
+    <!-- Top Action Bar -->
     <RelativeLayout
         android:id="@+id/topBar"
         android:layout_width="match_parent"
-        android:layout_height="60dp"
-        android:paddingHorizontal="20dp"
-        android:layout_alignParentTop="true">
+        android:layout_height="56dp"
+        android:paddingHorizontal="16dp">
 
         <LinearLayout
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_centerVertical="true"
+            android:layout_height="match_parent"
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
@@ -28,31 +26,29 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
+                android:layout_marginStart="10dp"
                 android:text="A3S FAST VPN"
                 android:textColor="#FFC107"
-                android:textSize="17sp"
+                android:textSize="18sp"
                 android:textStyle="bold" />
         </LinearLayout>
 
         <ImageView
-            android:id="@+id/ivProfile"
-            android:layout_width="38dp"
-            android:layout_height="38dp"
+            android:id="@+id/btnProfile"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
             android:layout_alignParentEnd="true"
             android:layout_centerVertical="true"
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:padding="6dp"
             android:src="@android:drawable/ic_menu_myplaces"
             app:tint="#FFC107" />
     </RelativeLayout>
 
-    <!-- Center Content -->
     <ScrollView
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:layout_below="@id/topBar"
         android:layout_above="@id/bottomNav"
+        android:layout_below="@id/topBar"
         android:fillViewport="true">
 
         <LinearLayout
@@ -60,123 +56,93 @@
             android:layout_height="wrap_content"
             android:gravity="center_horizontal"
             android:orientation="vertical"
-            android:paddingHorizontal="16dp"
-            android:paddingTop="6dp"
-            android:paddingBottom="16dp">
+            android:padding="20dp">
 
+            <!-- VPN Status & Timer -->
             <TextView
-                android:id="@+id/tvConnectionStatus"
+                android:id="@+id/tvStatus"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="DISCONNECTED"
+                android:layout_marginTop="8dp"
+                android:text="NOT CONNECTED"
                 android:textColor="#94A3B8"
-                android:textSize="13sp" />
-
-            <TextView
-                android:id="@+id/tvSessionTimer"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
-                android:text="00:00:00"
-                android:textColor="#FFFFFF"
-                android:textSize="32sp"
+                android:textSize="14sp"
                 android:textStyle="bold" />
 
-            <!-- Connect Button Area -->
+            <TextView
+                android:id="@+id/tvTimer"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="00:00:00"
+                android:textColor="#FFFFFF"
+                android:textSize="38sp"
+                android:textStyle="bold" />
+
+            <!-- Main Power Button with Glow -->
             <FrameLayout
-                android:layout_width="190dp"
-                android:layout_height="190dp"
-                android:layout_marginVertical="12dp">
+                android:layout_width="180dp"
+                android:layout_height="180dp"
+                android:layout_marginVertical="24dp">
 
                 <View
-                    android:id="@+id/viewPulseRing"
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"
                     android:background="@drawable/bg_connect_glow_ring" />
 
-                <ProgressBar
-                    android:id="@+id/pbConnectingRing"
-                    android:layout_width="160dp"
-                    android:layout_height="160dp"
-                    android:layout_gravity="center"
-                    android:indeterminateTint="#FFC107"
-                    android:visibility="gone" />
-
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnConnect"
-                    android:layout_width="145dp"
-                    android:layout_height="145dp"
+                    android:layout_width="130dp"
+                    android:layout_height="130dp"
                     android:layout_gravity="center"
-                    android:backgroundTint="#D32F2F"
+                    android:backgroundTint="#FFC107"
                     android:insetTop="0dp"
                     android:insetBottom="0dp"
                     android:text="CONNECT"
-                    android:textColor="#FFFFFF"
-                    android:textSize="16sp"
+                    android:textColor="#0A0D14"
+                    android:textSize="14sp"
                     android:textStyle="bold"
-                    app:cornerRadius="73dp"
-                    app:strokeColor="#FFC107"
-                    app:strokeWidth="1.8dp" />
+                    app:cornerRadius="65dp" />
             </FrameLayout>
 
-            <!-- Dynamic Country / Server Card -->
+            <!-- Server Selector Card -->
             <LinearLayout
-                android:id="@+id/cardServerSelect"
+                android:id="@+id/cardSelectServer"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="12dp"
+                android:layout_marginBottom="16dp"
                 android:background="@drawable/bg_card_neon_border"
+                android:clickable="true"
+                android:focusable="true"
                 android:gravity="center_vertical"
                 android:orientation="horizontal"
-                android:padding="12dp">
+                android:padding="14dp">
 
                 <TextView
-                    android:id="@+id/tvCountryFlagEmoji"
-                    android:layout_width="32dp"
-                    android:layout_height="32dp"
-                    android:gravity="center"
-                    android:text="🇩🇪"
-                    android:textSize="22sp" />
-
-                <LinearLayout
+                    android:id="@+id/tvSelectedServer"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:layout_marginStart="12dp"
                     android:layout_weight="1"
-                    android:orientation="vertical">
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="SELECTED LOCATION"
-                        android:textColor="#94A3B8"
-                        android:textSize="9.5sp" />
-
-                    <TextView
-                        android:id="@+id/tvCountryName"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Germany (VIP)"
-                        android:textColor="#FFC107"
-                        android:textSize="13sp"
-                        android:textStyle="bold" />
-                </LinearLayout>
+                    android:text="🇩🇪 Germany (VIP)"
+                    android:textColor="#FFFFFF"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
 
                 <ImageView
                     android:layout_width="20dp"
                     android:layout_height="20dp"
-                    android:src="@android:drawable/ic_menu_directions"
+                    android:src="@android:drawable/arrow_down_float"
                     app:tint="#FFC107" />
             </LinearLayout>
 
-            <!-- Live Stats Row -->
+            <!-- Monitoring Metrics Cards -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="12dp"
+                android:layout_marginBottom="16dp"
                 android:background="@drawable/bg_card_neon_border"
                 android:orientation="horizontal"
-                android:paddingVertical="10dp"
+                android:paddingVertical="12dp"
                 android:weightSum="3">
 
                 <LinearLayout
@@ -190,15 +156,15 @@
                         android:layout_height="wrap_content"
                         android:text="DATA USAGE"
                         android:textColor="#94A3B8"
-                        android:textSize="9.5sp" />
+                        android:textSize="10sp" />
                     <TextView
                         android:id="@+id/tvDataUsage"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="3dp"
+                        android:layout_marginTop="4dp"
                         android:text="0.00 MB"
-                        android:textColor="#FFC107"
-                        android:textSize="12sp"
+                        android:textColor="#FFFFFF"
+                        android:textSize="13sp"
                         android:textStyle="bold" />
                 </LinearLayout>
 
@@ -213,15 +179,15 @@
                         android:layout_height="wrap_content"
                         android:text="PUBLIC IP"
                         android:textColor="#94A3B8"
-                        android:textSize="9.5sp" />
+                        android:textSize="10sp" />
                     <TextView
                         android:id="@+id/tvPublicIp"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="3dp"
-                        android:text="Detecting..."
+                        android:layout_marginTop="4dp"
+                        android:text="Disconnected"
                         android:textColor="#FFFFFF"
-                        android:textSize="12sp"
+                        android:textSize="13sp"
                         android:textStyle="bold" />
                 </LinearLayout>
 
@@ -236,20 +202,20 @@
                         android:layout_height="wrap_content"
                         android:text="PING"
                         android:textColor="#94A3B8"
-                        android:textSize="9.5sp" />
+                        android:textSize="10sp" />
                     <TextView
                         android:id="@+id/tvPing"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="3dp"
+                        android:layout_marginTop="4dp"
                         android:text="-- ms"
                         android:textColor="#00E676"
-                        android:textSize="12sp"
+                        android:textSize="13sp"
                         android:textStyle="bold" />
                 </LinearLayout>
             </LinearLayout>
 
-            <!-- Monetag Spacious Banner / Push Ad Container -->
+            <!-- Monetag Ad Space -->
             <FrameLayout
                 android:id="@+id/adContainer"
                 android:layout_width="match_parent"
@@ -268,11 +234,11 @@
         </LinearLayout>
     </ScrollView>
 
-    <!-- Bottom Navigation Bar -->
+    <!-- Bottom Navigation -->
     <com.google.android.material.bottomnavigation.BottomNavigationView
         android:id="@+id/bottomNav"
         android:layout_width="match_parent"
-        android:layout_height="64dp"
+        android:layout_height="wrap_content"
         android:layout_alignParentBottom="true"
         android:background="#111625"
         app:itemIconTint="#FFC107"
