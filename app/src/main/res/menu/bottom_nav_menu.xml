@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/menu_home"
+        android:icon="@android:drawable/ic_menu_compass"
+        android:title="Home" />
+
+    <item
+        android:id="@+id/menu_speed_test"
+        android:icon="@android:drawable/ic_menu_send"
+        android:title="Speed Test" />
+
+    <item
+        android:id="@+id/menu_dns_leak"
+        android:icon="@android:drawable/ic_menu_manage"
+        android:title="DNS Leak" />
+
+    <item
+        android:id="@+id/menu_clean_cache"
+        android:icon="@android:drawable/ic_menu_delete"
+        android:title="Clean Cache" />
+</menu>
