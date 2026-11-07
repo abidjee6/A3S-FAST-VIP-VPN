@@ -32,6 +32,17 @@
         <activity android:name=".SpeedTestActivity" android:exported="false" />
         <activity android:name=".ToolsActivity" android:exported="false" />
 
+        <!-- WireGuard VPN Service Declaration with android:exported for Android 12+ -->
+        <service
+            android:name="com.wireguard.android.backend.GoBackend$VpnService"
+            android:exported="false"
+            android:permission="android.permission.BIND_VPN_SERVICE"
+            tools:replace="android:exported">
+            <intent-filter>
+                <action android:name="android.net.VpnService" />
+            </intent-filter>
+        </service>
+
     </application>
 
 </manifest>
