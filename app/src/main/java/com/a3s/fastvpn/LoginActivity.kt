@@ -41,16 +41,17 @@ class LoginActivity : AppCompatActivity() {
             btnLogin.isEnabled = false
             progressBar.visibility = View.VISIBLE
 
-            // سب سے پہلے پچھلی ورکنگ ایپ کا بنیادی روٹ /api/login ٹرائی کریں
-            sendLoginRequest(username, password, "/api/login") { success ->
+            // سب سے پہلے کلاسک JSON فارمیٹ میں کوشش کریں
+            performAuthAttempt(username, password, isJson = true) { success, serverErrorMsg ->
                 if (!success) {
-                    // اگر /api/login پر 404 آئے تو بیک اپ روٹ /login ٹرائی کریں
-                    sendLoginRequest(username, password, "/login") { finalSuccess ->
-                        if (!finalSuccess) {
-                            runOnUiThread {
-                                btnLogin.isEnabled = true
-                                progressBar.visibility = View.GONE
-                                Toast.makeText(this@LoginActivity, "سرور روٹ نہیں ملا (404 Not Found)", Toast.LENGTH_LONG).show()
+                    // اگر JSON پر سرور ریجیکٹ کرے تو فارم ڈیٹا (FormBody) فارمیٹ آزمائیں
+                    performAuthAttempt(username, password, isJson = false) { finalSuccess, finalMsg ->
+                        runOnUiThread {
+                            btnLogin.isEnabled = true
+                            progressBar.visibility = View.GONE
+                            if (!finalSuccess) {
+                                val errorDetail = if (!finalMsg.isNullOrEmpty()) finalMsg else "غلط یوزر نیم یا پاس ورڈ"
+                                Toast.makeText(this@LoginActivity, errorDetail, Toast.LENGTH_LONG).show()
                             }
                         }
                     }
@@ -59,58 +60,63 @@ class LoginActivity : AppCompatActivity() {
         }
     }
 
-    private fun sendLoginRequest(user: String, pass: String, endpoint: String, callback: (Boolean) -> Unit) {
-        val btnLogin = findViewById<MaterialButton>(R.id.btnLogin)
-        val progressBar = findViewById<ProgressBar>(R.id.progressBar)
+    private fun performAuthAttempt(
+        user: String,
+        pass: String,
+        isJson: Boolean,
+        onResult: (Boolean, String?) -> Unit
+    ) {
+        val requestBody: RequestBody
+        val contentType: String
 
-        val jsonPayload = JSONObject().apply {
-            put("username", user)
-            put("password", pass)
+        if (isJson) {
+            val json = JSONObject().apply {
+                put("username", user)
+                put("password", pass)
+                put("user", user)
+                put("pass", pass)
+            }
+            contentType = "application/json; charset=utf-8"
+            requestBody = json.toString().toRequestBody(contentType.toMediaTypeOrNull())
+        } else {
+            contentType = "application/x-www-form-urlencoded"
+            requestBody = FormBody.Builder()
+                .add("username", user)
+                .add("password", pass)
+                .add("user", user)
+                .add("pass", pass)
+                .build()
         }
 
-        val requestBody = jsonPayload.toString().toRequestBody("application/json; charset=utf-8".toMediaTypeOrNull())
-
         val request = Request.Builder()
-            .url("$BASE_URL$endpoint")
+            .url("$BASE_URL/api/login")
             .post(requestBody)
-            .addHeader("Content-Type", "application/json")
+            .addHeader("Content-Type", contentType)
             .addHeader("Accept", "application/json")
             .build()
 
         httpClient.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
                 runOnUiThread {
-                    btnLogin.isEnabled = true
-                    progressBar.visibility = View.GONE
-                    Toast.makeText(this@LoginActivity, "سرور سے رابطہ نہ ہو سکا: ${e.message}", Toast.LENGTH_LONG).show()
+                    onResult(false, "سرور سے رابطہ نہ ہو سکا: ${e.message}")
                 }
-                callback(false)
             }
 
             override fun onResponse(call: Call, response: Response) {
                 val statusCode = response.code
                 val rawResponse = response.body?.string() ?: ""
 
+                // 404 آنے کی صورت میں /login ٹرائی کریں
                 if (statusCode == 404) {
-                    // اگر یہ روٹ سرور پر نہیں ہے تو دوسرے روٹ کی طرف بڑھیں
-                    callback(false)
+                    onResult(false, "API route not found (404)")
                     return
                 }
 
-                runOnUiThread {
-                    btnLogin.isEnabled = true
-                    progressBar.visibility = View.GONE
+                try {
+                    val result = LoginResponse.parse(rawResponse)
 
-                    if (statusCode == 401 || statusCode == 403) {
-                        Toast.makeText(this@LoginActivity, "غلط یوزر نیم یا پاس ورڈ", Toast.LENGTH_LONG).show()
-                        callback(true)
-                        return@runOnUiThread
-                    }
-
-                    try {
-                        val result = LoginResponse.parse(rawResponse)
-
-                        if (result.success || statusCode in 200..299) {
+                    if (result.success || statusCode in 200..299) {
+                        runOnUiThread {
                             val prefs = getSharedPreferences("A3S_VPN_PREFS", Context.MODE_PRIVATE)
                             prefs.edit().apply {
                                 putBoolean("IS_LOGGED_IN", true)
@@ -125,14 +131,30 @@ class LoginActivity : AppCompatActivity() {
                             intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
                             startActivity(intent)
                             finish()
-                            callback(true)
-                        } else {
-                            Toast.makeText(this@LoginActivity, result.message, Toast.LENGTH_LONG).show()
-                            callback(true)
                         }
-                    } catch (e: Exception) {
-                        Toast.makeText(this@LoginActivity, "لاگ ان رسپانس ایرر: $rawResponse", Toast.LENGTH_LONG).show()
-                        callback(true)
+                        onResult(true, null)
+                    } else {
+                        // سرور کی طرف سے ملا ہوا تفصیلی پیغام
+                        val msg = if (result.message.isNotEmpty()) result.message else "Authentication failed ($statusCode)"
+                        onResult(false, msg)
+                    }
+                } catch (e: Exception) {
+                    if (statusCode in 200..299) {
+                        // اگر سرور نے 200 OK دیا لیکن رسپانس سادہ ٹیکسٹ تھا
+                        runOnUiThread {
+                            val prefs = getSharedPreferences("A3S_VPN_PREFS", Context.MODE_PRIVATE)
+                            prefs.edit().apply {
+                                putBoolean("IS_LOGGED_IN", true)
+                                putString("LOGGED_USER", user)
+                                apply()
+                            }
+                            val intent = Intent(this@LoginActivity, MainActivity::class.java)
+                            startActivity(intent)
+                            finish()
+                        }
+                        onResult(true, null)
+                    } else {
+                        onResult(false, "سرور جواب: $rawResponse")
                     }
                 }
             }
