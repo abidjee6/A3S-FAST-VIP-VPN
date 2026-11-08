@@ -19,26 +19,25 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    - name: Install System Gradle
+    - name: Install and Setup Gradle 8.2
       run: |
-        sudo apt-get update -qq
-        sudo apt-get install -y -qq gradle
+        sudo rm -f /etc/apt/sources.list.d/*gradle* 2>/dev/null || true
+        wget -q https://services.gradle.org/distributions/gradle-8.2-bin.zip -O gradle-8.2-bin.zip || curl -sSL -o gradle-8.2-bin.zip https://downloads.gradle-dn.com/distributions/gradle-8.2-bin.zip
+        sudo unzip -q gradle-8.2-bin.zip -d /opt/gradle
+        echo "/opt/gradle/gradle-8.2/bin" >> $GITHUB_PATH
 
     - name: Build Android APK
       run: |
-        # تلاش کریں کہ پروجیکٹ کی سیٹنگز یا گریڈل فائل کس ڈائریکٹری میں ہے
+        export PATH="/opt/gradle/gradle-8.2/bin:$PATH"
+        
+        # پروجیکٹ کی سیٹنگز فائل تلاش کریں
         ROOT_DIR=$(find . -name "settings.gradle*" -exec dirname {} \; | head -n 1)
         if [ -n "$ROOT_DIR" ]; then
           cd "$ROOT_DIR"
         fi
-        
-        # اگر ریپوزٹری میں ریپر اسکرپٹ موجود ہو تو اسے چلائیں، ورنہ سسٹم گریڈل استعمال کریں
-        if [ -f "./gradlew" ]; then
-          chmod +x ./gradlew
-          ./gradlew assembleDebug --no-daemon --stacktrace
-        else
-          gradle assembleDebug --no-daemon --stacktrace
-        fi
+
+        gradle -v
+        gradle assembleDebug --no-daemon --stacktrace
 
     - name: Upload Debug APK
       uses: actions/upload-artifact@v4
