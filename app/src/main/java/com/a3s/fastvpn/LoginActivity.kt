@@ -46,12 +46,11 @@ class LoginActivity : AppCompatActivity() {
                 put("password", password)
             }
 
-            val requestBody = jsonPayload.toString().toRequestBody("application/json; charset=utf-8".toMediaTypeOrNull())
+            val body = jsonPayload.toString().toRequestBody("application/json; charset=utf-8".toMediaTypeOrNull())
 
-            // اصلی کلائنٹ روٹ /api/app/login استعمال کریں
             val request = Request.Builder()
                 .url("$BASE_URL/api/app/login")
-                .post(requestBody)
+                .post(body)
                 .addHeader("Content-Type", "application/json")
                 .addHeader("Accept", "application/json")
                 .build()
@@ -80,13 +79,19 @@ class LoginActivity : AppCompatActivity() {
                                 val userObj = json.optJSONObject("user")
                                 val token = json.optString("token", "")
                                 val savedUser = userObj?.optString("username") ?: username
+                                
+                                // سرور سے آنے والی وائرگارڈ کنفگ نکالیں
+                                var wgConfig = json.optString("config", json.optString("wg_config", ""))
+                                if (wgConfig.isEmpty() && userObj != null) {
+                                    wgConfig = userObj.optString("config", userObj.optString("wg_config", ""))
+                                }
 
-                                val prefs = getSharedPreferences("A3S_VPN_PREFS", Context.MODE_PRIVATE)
+                                val prefs = getSharedPreferences("a3s_vpn_prefs", Context.MODE_PRIVATE)
                                 prefs.edit().apply {
                                     putBoolean("IS_LOGGED_IN", true)
                                     putString("LOGGED_USER", savedUser)
                                     putString("AUTH_TOKEN", token)
-                                    putBoolean("IS_VIP", true)
+                                    putString("wg_config", wgConfig)
                                     apply()
                                 }
 
@@ -100,7 +105,7 @@ class LoginActivity : AppCompatActivity() {
                                 Toast.makeText(this@LoginActivity, errorMsg, Toast.LENGTH_LONG).show()
                             }
                         } catch (e: Exception) {
-                            Toast.makeText(this@LoginActivity, "سرور رسپانس: $rawResponse", Toast.LENGTH_LONG).show()
+                            Toast.makeText(this@LoginActivity, "رسپانس پروسیسنگ ایرر: ${e.message}", Toast.LENGTH_LONG).show()
                         }
                     }
                 }
