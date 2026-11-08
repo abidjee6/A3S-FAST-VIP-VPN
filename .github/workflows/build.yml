@@ -19,18 +19,21 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    - name: Setup Gradle
-      uses: gradle/actions/setup-gradle@v3
-      with:
-        gradle-version: '8.2'
-
-    - name: Build with Gradle
+    - name: Install System Gradle
       run: |
+        sudo apt-get update -qq
+        sudo apt-get install -y -qq gradle
+
+    - name: Build Android APK
+      run: |
+        # تلاش کریں کہ پروجیکٹ کی سیٹنگز یا گریڈل فائل کس ڈائریکٹری میں ہے
+        ROOT_DIR=$(find . -name "settings.gradle*" -exec dirname {} \; | head -n 1)
+        if [ -n "$ROOT_DIR" ]; then
+          cd "$ROOT_DIR"
+        fi
+        
+        # اگر ریپوزٹری میں ریپر اسکرپٹ موجود ہو تو اسے چلائیں، ورنہ سسٹم گریڈل استعمال کریں
         if [ -f "./gradlew" ]; then
-          chmod +x ./gradlew
-          ./gradlew assembleDebug --no-daemon --stacktrace
-        elif [ -f "./A3S-FAST-VIP-VPN/gradlew" ]; then
-          cd A3S-FAST-VIP-VPN
           chmod +x ./gradlew
           ./gradlew assembleDebug --no-daemon --stacktrace
         else
@@ -42,3 +45,4 @@ jobs:
       with:
         name: A3S-Fast-VPN-Debug
         path: "**/build/outputs/apk/debug/*.apk"
+        if-no-files-found: error
