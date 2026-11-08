@@ -1,8 +1,10 @@
 package com.a3s.fastvpn
 
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
+import android.net.TrafficStats
 import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
@@ -21,13 +23,23 @@ import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.button.MaterialButton
+import com.wireguard.android.backend.GoBackend
+import com.wireguard.android.backend.Tunnel
+import com.wireguard.config.Config
 import okhttp3.*
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.ByteArrayInputStream
 import java.io.IOException
+import java.nio.charset.StandardCharsets
 import java.util.Locale
 
 class MainActivity : AppCompatActivity() {
+
+    private class A3STunnel(private val tunnelName: String) : Tunnel {
+        override fun getName(): String = tunnelName
+        override fun onStateChange(newState: Tunnel.State) {}
+    }
 
     private lateinit var tvStatus: TextView
     private lateinit var tvTimer: TextView
@@ -45,19 +57,27 @@ class MainActivity : AppCompatActivity() {
     
     private val serverList = ArrayList<ServerModel>()
     private var selectedServer: ServerModel? = null
-    private var isConnected = false
 
+    // WireGuard Backend & Tunnel Engine
+    private var wgBackend: GoBackend? = null
+    private val activeTunnel = A3STunnel("A3SFastVPN")
+    private val VPN_REQUEST_CODE = 1001
+
+    private var isConnected = false
+    private var isConnecting = false
     private var secondsElapsed = 0
-    private var timerHandler = Handler(Looper.getMainLooper())
+    private val mainHandler = Handler(Looper.getMainLooper())
     private lateinit var timerRunnable: Runnable
 
-    private var bytesTransferred = 14889779L
+    private var startRxBytes = 0L
+    private var startTxBytes = 0L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
         initViews()
+        initWireGuardBackend()
         setupTimer()
         setupBottomNav()
         setupProfilePopup()
@@ -72,19 +92,22 @@ class MainActivity : AppCompatActivity() {
         // ڈیٹا بیس سے لائیو سرورز لوڈ کریں
         loadServersFromDatabase()
 
-        // سرور سلیکٹر کلک
+        // سرور سلیکٹر
         cardSelectServer.setOnClickListener {
             showServerSelectionSheet()
         }
 
         // کنیکٹ / ڈس کنیکٹ بٹن
         btnConnect.setOnClickListener {
+            if (isConnecting) return@setOnClickListener
             if (isConnected) {
-                disconnectVpn()
+                disconnectVpnTunnel()
             } else {
-                startVpnProcess()
+                prepareAndConnectWireGuard()
             }
         }
+
+        startDataUsageTracker()
     }
 
     private fun initViews() {
@@ -100,6 +123,161 @@ class MainActivity : AppCompatActivity() {
         bottomNav = findViewById(R.id.bottomNav)
     }
 
+    private fun initWireGuardBackend() {
+        if (wgBackend == null) {
+            try {
+                wgBackend = GoBackend(applicationContext)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        checkLiveTunnelState()
+        if (!isConnected) {
+            fetchPublicIp()
+            measurePing()
+        }
+    }
+
+    private fun checkLiveTunnelState() {
+        initWireGuardBackend()
+        try {
+            val state = wgBackend?.getState(activeTunnel)
+            if (state == Tunnel.State.UP) {
+                setConnectedUi()
+                fetchPublicIp()
+            } else {
+                setDisconnectedUi()
+            }
+        } catch (e: Exception) {
+            setDisconnectedUi()
+        }
+    }
+
+    private fun prepareAndConnectWireGuard() {
+        val vpnIntent = VpnService.prepare(this)
+        if (vpnIntent != null) {
+            startActivityForResult(vpnIntent, VPN_REQUEST_CODE)
+        } else {
+            startTunnelConnectingFlow()
+        }
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == VPN_REQUEST_CODE) {
+            if (resultCode == Activity.RESULT_OK) {
+                startTunnelConnectingFlow()
+            } else {
+                Toast.makeText(this, "وی پی این اجازت ضروری ہے", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun startTunnelConnectingFlow() {
+        initWireGuardBackend()
+        val prefs = getSharedPreferences("a3s_vpn_prefs", Context.MODE_PRIVATE)
+        var configStr = prefs.getString("wg_config", "") ?: ""
+
+        if (configStr.isEmpty()) {
+            Toast.makeText(this, "کنفیگریشن موجود نہیں، دوبارہ لاگ ان کریں", Toast.LENGTH_LONG).show()
+            return
+        }
+
+        // اگر ڈی این ایس موجود نہ ہو تو فاسٹ ایڈگارڈ ڈی این ایس خودکار شامل کریں
+        if (!configStr.contains("DNS =") && !configStr.contains("DNS=")) {
+            configStr = configStr.replace("[Interface]", "[Interface]\nDNS = 1.1.1.1, 8.8.8.8\n")
+        }
+
+        // اگر منتخب سرور کا اینڈ پوائنٹ تبدیل کرنا ہو
+        selectedServer?.let { server ->
+            if (server.endpoint.isNotEmpty() && configStr.contains("Endpoint =")) {
+                configStr = configStr.replace(Regex("Endpoint\\s*=.*"), "Endpoint = ${server.endpoint}")
+            }
+        }
+
+        isConnecting = true
+        btnConnect.isEnabled = false
+        tvStatus.text = "CONNECTING..."
+        tvStatus.setTextColor(Color.parseColor("#FFC107"))
+
+        mainHandler.postDelayed({
+            try {
+                val config = Config.parse(ByteArrayInputStream(configStr.toByteArray(StandardCharsets.UTF_8)))
+                if (wgBackend == null) initWireGuardBackend()
+                
+                // اینڈرائیڈ وی پی این انٹرفیس کو لائیو فعال کریں (چابی بنے گی)
+                wgBackend?.setState(activeTunnel, Tunnel.State.UP, config)
+
+                startRxBytes = TrafficStats.getTotalRxBytes()
+                startTxBytes = TrafficStats.getTotalTxBytes()
+
+                setConnectedUi()
+                Toast.makeText(this, "A3S FAST VIP VPN Connected!", Toast.LENGTH_SHORT).show()
+
+                tvPublicIp.text = "Resolving..."
+                mainHandler.postDelayed({
+                    fetchPublicIp()
+                    measurePing()
+                }, 2000)
+
+            } catch (e: Exception) {
+                isConnecting = false
+                setDisconnectedUi()
+                Toast.makeText(this, "ٹنل شروع نہ ہو سکی: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        }, 1500)
+    }
+
+    private fun disconnectVpnTunnel() {
+        initWireGuardBackend()
+        try {
+            wgBackend?.setState(activeTunnel, Tunnel.State.DOWN, null)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
+        setDisconnectedUi()
+        tvPublicIp.text = "Reverting..."
+        mainHandler.postDelayed({
+            fetchPublicIp()
+            measurePing()
+        }, 1500)
+        Toast.makeText(this, "وی پی این منقطع کر دیا گیا", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun setConnectedUi() {
+        isConnected = true
+        isConnecting = false
+        btnConnect.isEnabled = true
+        btnConnect.text = "DISCONNECT"
+        btnConnect.setBackgroundColor(Color.parseColor("#1B5E20"))
+        tvStatus.text = "VPN CONNECTED"
+        tvStatus.setTextColor(Color.parseColor("#00E676"))
+
+        secondsElapsed = 0
+        mainHandler.removeCallbacks(timerRunnable)
+        mainHandler.post(timerRunnable)
+    }
+
+    private fun setDisconnectedUi() {
+        isConnected = false
+        isConnecting = false
+        btnConnect.isEnabled = true
+        btnConnect.text = "CONNECT"
+        btnConnect.setBackgroundColor(Color.parseColor("#FFC107"))
+        tvStatus.text = "NOT CONNECTED"
+        tvStatus.setTextColor(Color.parseColor("#94A3B8"))
+        tvTimer.text = "00:00:00"
+        tvPing.text = "-- ms"
+
+        mainHandler.removeCallbacks(timerRunnable)
+    }
+
     private fun setupTimer() {
         timerRunnable = object : Runnable {
             override fun run() {
@@ -109,65 +287,60 @@ class MainActivity : AppCompatActivity() {
                     val minutes = (secondsElapsed % 3600) / 60
                     val secs = secondsElapsed % 60
                     tvTimer.text = String.format(Locale.getDefault(), "%02d:%02d:%02d", hours, minutes, secs)
-
-                    // ڈیٹا یوسیج لائیو اپ ڈیٹ
-                    bytesTransferred += (25000..75000).random()
-                    val mb = bytesTransferred.toDouble() / (1024 * 1024)
-                    tvDataUsage.text = String.format(Locale.getDefault(), "%.2f MB", mb)
-
-                    timerHandler.postDelayed(this, 1000)
+                    mainHandler.postDelayed(this, 1000)
                 }
             }
         }
     }
 
-    private fun startVpnProcess() {
-        val intent = VpnService.prepare(this)
-        if (intent != null) {
-            startActivityForResult(intent, 101)
-        } else {
-            onActivityResult(101, RESULT_OK, null)
+    private fun startDataUsageTracker() {
+        val runnable = object : Runnable {
+            override fun run() {
+                if (isConnected) {
+                    val currentRx = (TrafficStats.getTotalRxBytes() - startRxBytes).coerceAtLeast(0)
+                    val currentTx = (TrafficStats.getTotalTxBytes() - startTxBytes).coerceAtLeast(0)
+                    val totalMb = (currentRx + currentTx) / (1024.0 * 1024.0)
+                    tvDataUsage.text = String.format(Locale.getDefault(), "%.2f MB", totalMb)
+                } else {
+                    tvDataUsage.text = "0.00 MB"
+                }
+                mainHandler.postDelayed(this, 1500)
+            }
         }
+        mainHandler.post(runnable)
     }
 
-    @Deprecated("Deprecated in Java")
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == 101 && resultCode == RESULT_OK) {
-            connectVpn()
-        } else {
-            Toast.makeText(this, "وی پی این اجازت ضروری ہے", Toast.LENGTH_SHORT).show()
-        }
+    private fun fetchPublicIp() {
+        val request = Request.Builder().url("http://ip-api.com/json/?fields=status,country,query").build()
+        httpClient.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {}
+            override fun onResponse(call: Call, response: Response) {
+                val res = response.body?.string() ?: ""
+                try {
+                    val json = JSONObject(res)
+                    if (json.optString("status") == "success") {
+                        val ip = json.optString("query", "Unknown")
+                        runOnUiThread {
+                            tvPublicIp.text = ip
+                        }
+                    }
+                } catch (e: Exception) {}
+            }
+        })
     }
 
-    private fun connectVpn() {
-        isConnected = true
-        tvStatus.text = "VPN CONNECTED"
-        tvStatus.setTextColor(Color.parseColor("#00E676"))
-        btnConnect.text = "DISCONNECT"
-        btnConnect.setBackgroundColor(Color.parseColor("#1B5E20"))
-
-        val targetEndpoint = selectedServer?.endpoint ?: "2.31.89.14:51820"
-        val ipOnly = targetEndpoint.split(":").firstOrNull() ?: "2.31.89.14"
-        tvPublicIp.text = ipOnly
-        tvPing.text = "${selectedServer?.ping ?: 42} ms"
-
-        secondsElapsed = 0
-        timerHandler.post(timerRunnable)
-        Toast.makeText(this, "محفوظ کنکشن فعال ہو چکا ہے", Toast.LENGTH_SHORT).show()
-    }
-
-    private fun disconnectVpn() {
-        isConnected = false
-        timerHandler.removeCallbacks(timerRunnable)
-        tvStatus.text = "NOT CONNECTED"
-        tvStatus.setTextColor(Color.parseColor("#94A3B8"))
-        tvTimer.text = "00:00:00"
-        btnConnect.text = "CONNECT"
-        btnConnect.setBackgroundColor(Color.parseColor("#FFC107"))
-        tvPublicIp.text = "Disconnected"
-        tvPing.text = "-- ms"
-        Toast.makeText(this, "وی پی این منقطع کر دیا گیا", Toast.LENGTH_SHORT).show()
+    private fun measurePing() {
+        val startTime = System.currentTimeMillis()
+        val request = Request.Builder().url("$BASE_URL/api/speedtest/ping").build()
+        httpClient.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                runOnUiThread { tvPing.text = "-- ms" }
+            }
+            override fun onResponse(call: Call, response: Response) {
+                val latency = System.currentTimeMillis() - startTime
+                runOnUiThread { tvPing.text = "$latency ms" }
+            }
+        })
     }
 
     private fun loadServersFromDatabase() {
@@ -179,9 +352,7 @@ class MainActivity : AppCompatActivity() {
 
         httpClient.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                runOnUiThread {
-                    setupDefaultServers()
-                }
+                runOnUiThread { setupDefaultServers() }
             }
 
             override fun onResponse(call: Call, response: Response) {
@@ -225,7 +396,7 @@ class MainActivity : AppCompatActivity() {
         serverList.add(ServerModel("1", "Germany (VIP)", "Germany", "🇩🇪", "2.31.89.14:51820", "", "10.0.0.2/32", "1.1.1.1", true, 42))
         serverList.add(ServerModel("2", "Netherlands (Free)", "Netherlands", "🇳🇱", "2.31.89.14:51821", "", "10.0.0.3/32", "1.1.1.1", false, 65))
         serverList.add(ServerModel("3", "USA - New York", "United States", "🇺🇸", "2.31.89.14:51822", "", "10.0.0.4/32", "1.1.1.1", true, 110))
-        selectedServer = serverList[0]
+        selectedServer = serverList.firstOrNull()
         updateSelectedServerUi()
     }
 
@@ -246,7 +417,7 @@ class MainActivity : AppCompatActivity() {
 
         val adapter = ServerAdapter(serverList) { clickedServer ->
             if (isConnected) {
-                disconnectVpn()
+                disconnectVpnTunnel()
             }
             selectedServer = clickedServer
             updateSelectedServerUi()
@@ -262,15 +433,15 @@ class MainActivity : AppCompatActivity() {
             val popupView = LayoutInflater.from(this).inflate(R.layout.dialog_profile_popup, null)
             dialog.setContentView(popupView)
 
-            val prefs = getSharedPreferences("A3S_VPN_PREFS", Context.MODE_PRIVATE)
-            val username = prefs.getString("LOGGED_USER", "admin") ?: "admin"
+            val prefs = getSharedPreferences("a3s_vpn_prefs", Context.MODE_PRIVATE)
+            val username = prefs.getString("LOGGED_USER", "client") ?: "client"
 
             popupView.findViewById<TextView>(R.id.tvProfileUsername).text = "User: $username"
             popupView.findViewById<TextView>(R.id.tvProfileDevice).text = "Device: ${Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${Build.MODEL}"
 
             popupView.findViewById<MaterialButton>(R.id.btnLogout).setOnClickListener {
                 if (isConnected) {
-                    disconnectVpn()
+                    disconnectVpnTunnel()
                 }
                 prefs.edit().clear().apply()
                 dialog.dismiss()
@@ -316,6 +487,6 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        timerHandler.removeCallbacks(timerRunnable)
+        mainHandler.removeCallbacks(timerRunnable)
     }
 }
