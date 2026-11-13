@@ -1,45 +1,87 @@
 <?xml version="1.0" encoding="utf-8"?>
-<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<RelativeLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#0A0D14">
+    android:background="#100D13">
 
+    <!-- Decorative Red Glow -->
+    <View
+        android:layout_width="300dp"
+        android:layout_height="300dp"
+        android:layout_centerHorizontal="true"
+        android:layout_marginTop="90dp"
+        android:background="@drawable/bg_splash_glow"
+        android:alpha="0.8" />
+
+    <!-- Center Logo & Branding -->
     <LinearLayout
-        android:layout_width="wrap_content"
+        android:id="@+id/splashContent"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_centerInParent="true"
         android:gravity="center"
-        android:orientation="vertical">
+        android:orientation="vertical"
+        android:padding="24dp">
 
+        <!-- Original A3S Logo -->
         <ImageView
-            android:layout_width="100dp"
-            android:layout_height="100dp"
-            android:src="@drawable/ic_a3s_shield_logo" />
+            android:id="@+id/splashLogo"
+            android:layout_width="150dp"
+            android:layout_height="150dp"
+            android:src="@drawable/ic_a3s_shield_logo"
+            android:contentDescription="A3S FAST VPN Logo"
+            android:scaleType="fitCenter" />
 
+        <!-- App Title -->
         <TextView
+            android:id="@+id/splashTitle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:letterSpacing="0.08"
+            android:layout_marginTop="24dp"
             android:text="A3S FAST VPN"
-            android:textColor="#FFC107"
-            android:textSize="22sp"
-            android:textStyle="bold" />
+            android:textColor="#F5C65A"
+            android:textSize="28sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.08"
+            android:gravity="center" />
 
+        <!-- Tagline -->
         <TextView
+            android:id="@+id/splashTagline"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:text="Secure &amp; Unlimited Network Tunnel"
-            android:textColor="#94A3B8"
-            android:textSize="12sp" />
+            android:layout_marginTop="8dp"
+            android:text="SECURE • PRIVATE • FAST"
+            android:textColor="#D1A6A6"
+            android:textSize="12sp"
+            android:letterSpacing="0.16"
+            android:gravity="center" />
+
     </LinearLayout>
 
-    <ProgressBar
-        android:layout_width="32dp"
-        android:layout_height="32dp"
+    <!-- Bottom Loading -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
         android:layout_alignParentBottom="true"
-        android:layout_centerHorizontal="true"
-        android:layout_marginBottom="40dp"
-        android:indeterminateTint="#FFC107" />
+        android:layout_marginBottom="48dp"
+        android:gravity="center"
+        android:orientation="vertical">
+
+        <ProgressBar
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:indeterminateTint="#F5C65A" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:text="Initializing Secure Connection..."
+            android:textColor="#A98C92"
+            android:textSize="12sp" />
+
+    </LinearLayout>
+
 </RelativeLayout>
