@@ -1,6 +1,7 @@
-
 package com.a3s.fastvpn
 
+import android.app.Activity
+import android.content.Intent
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
@@ -17,6 +18,10 @@ import com.google.android.material.button.MaterialButton
 class PrivacyActivity : AppCompatActivity() {
 
     companion object {
+        const val EXTRA_USER_MODE = "a3s_user_mode"
+        const val MODE_FREE = "free"
+        const val MODE_VIP = "vip"
+
         private const val PREFS_NAME = "a3s_privacy_prefs"
         private const val POLICY_VERSION = "draft-1"
     }
@@ -25,8 +30,17 @@ class PrivacyActivity : AppCompatActivity() {
     private val goldColor = Color.rgb(245, 198, 90)
     private val mutedColor = Color.rgb(205, 184, 185)
 
+    private var selectedMode = MODE_FREE
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        selectedMode = intent.getStringExtra(EXTRA_USER_MODE)
+            ?.takeIf { it == MODE_FREE || it == MODE_VIP }
+            ?: MODE_FREE
+
+        // Default result: no permission granted.
+        setResult(Activity.RESULT_CANCELED)
 
         val scroll = ScrollView(this).apply {
             isFillViewport = true
@@ -139,10 +153,12 @@ class PrivacyActivity : AppCompatActivity() {
             text = "Agree & Continue"
             isAllCaps = false
             cornerRadius = dp(14)
-            backgroundTintList = ColorStateList.valueOf(goldColor)
+            backgroundTintList =
+                ColorStateList.valueOf(goldColor)
             setTextColor(backgroundColor)
 
             setOnClickListener {
+
                 if (!requiredConsent.isChecked) {
                     Toast.makeText(
                         this@PrivacyActivity,
@@ -152,7 +168,7 @@ class PrivacyActivity : AppCompatActivity() {
                     return@setOnClickListener
                 }
 
-                getSharedPreferences(
+                val saved = getSharedPreferences(
                     PREFS_NAME,
                     MODE_PRIVATE
                 ).edit()
@@ -166,13 +182,25 @@ class PrivacyActivity : AppCompatActivity() {
                         "optional_diagnostics",
                         optionalDiagnostics.isChecked
                     )
-                    .apply()
+                    .commit()
 
-                Toast.makeText(
-                    this@PrivacyActivity,
-                    "Consent saved. VPN setup is not yet enabled.",
-                    Toast.LENGTH_LONG
-                ).show()
+                if (!saved) {
+                    Toast.makeText(
+                        this@PrivacyActivity,
+                        "Could not save consent. Please try again.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                    return@setOnClickListener
+                }
+
+                val resultIntent = Intent().apply {
+                    putExtra(EXTRA_USER_MODE, selectedMode)
+                }
+
+                setResult(
+                    Activity.RESULT_OK,
+                    resultIntent
+                )
 
                 finish()
             }
@@ -194,11 +222,13 @@ class PrivacyActivity : AppCompatActivity() {
             cornerRadius = dp(14)
             backgroundTintList =
                 ColorStateList.valueOf(backgroundColor)
-            strokeColor = ColorStateList.valueOf(goldColor)
+            strokeColor =
+                ColorStateList.valueOf(goldColor)
             strokeWidth = dp(2)
             setTextColor(goldColor)
 
             setOnClickListener {
+                setResult(Activity.RESULT_CANCELED)
                 finish()
             }
         }
