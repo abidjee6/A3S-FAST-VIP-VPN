@@ -27,7 +27,7 @@
         android:usesCleartextTraffic="false"
         tools:targetApi="34">
 
-        <!-- Splash Screen -->
+        <!-- Main Launcher: Splash Screen -->
         <activity
             android:name=".SplashActivity"
             android:exported="true">
@@ -42,24 +42,32 @@
 
         </activity>
 
-        <!-- Existing Activities -->
+        <!-- Welcome Screen: Free VPN / VIP Login -->
+        <activity
+            android:name=".WelcomeActivity"
+            android:exported="false" />
+
+        <!-- Existing Login Screen -->
         <activity
             android:name=".LoginActivity"
             android:exported="false" />
 
+        <!-- Main VPN Dashboard -->
         <activity
             android:name=".MainActivity"
             android:exported="false" />
 
+        <!-- Speed Test -->
         <activity
             android:name=".SpeedTestActivity"
             android:exported="false" />
 
+        <!-- VPN Tools -->
         <activity
             android:name=".ToolsActivity"
             android:exported="false" />
 
-        <!-- WireGuard VPN Service -->
+        <!-- Existing WireGuard VPN Service -->
         <service
             android:name="com.wireguard.android.backend.GoBackend$VpnService"
             android:exported="false"
