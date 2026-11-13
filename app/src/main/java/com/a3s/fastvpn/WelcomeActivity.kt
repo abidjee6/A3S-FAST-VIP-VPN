@@ -27,7 +27,7 @@ class WelcomeActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
 
         val scrollView = ScrollView(this).apply {
-            isfillViewport = true
+            isFillViewport = true
             setBackgroundColor(backgroundColor)
         }
 
