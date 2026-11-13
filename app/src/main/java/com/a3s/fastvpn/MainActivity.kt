@@ -58,7 +58,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var bottomNav: BottomNavigationView
 
     private val httpClient = OkHttpClient()
-    private val BASE_URL = "http://2.31.89.14:3000"
+    private val BASE_URL = "https://2.31.89.14:8443"
 
     private val serverList = ArrayList<ServerModel>()
     private var selectedServer: ServerModel? = null
