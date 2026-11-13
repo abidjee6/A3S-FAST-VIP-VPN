@@ -47,6 +47,11 @@
             android:name=".WelcomeActivity"
             android:exported="false" />
 
+        <!-- Privacy Policy & Consent Screen -->
+        <activity
+            android:name=".PrivacyActivity"
+            android:exported="false" />
+
         <!-- Existing Login Screen -->
         <activity
             android:name=".LoginActivity"
