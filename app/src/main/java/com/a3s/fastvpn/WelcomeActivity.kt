@@ -1,5 +1,6 @@
 package com.a3s.fastvpn
 
+import android.app.Activity
 import android.content.Intent
 import android.content.res.ColorStateList
 import android.graphics.Color
@@ -12,6 +13,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.button.MaterialButton
 
@@ -31,6 +33,58 @@ class WelcomeActivity : AppCompatActivity() {
     private val redColor = Color.rgb(110, 29, 42)
     private val whiteColor = Color.WHITE
     private val mutedColor = Color.rgb(199, 171, 174)
+
+    private val privacyLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+
+        if (result.resultCode != Activity.RESULT_OK) {
+            Toast.makeText(
+                this,
+                "Privacy consent was not completed.",
+                Toast.LENGTH_SHORT
+            ).show()
+            return@registerForActivityResult
+        }
+
+        if (!hasValidConsent()) {
+            Toast.makeText(
+                this,
+                "Valid privacy consent is required.",
+                Toast.LENGTH_LONG
+            ).show()
+            return@registerForActivityResult
+        }
+
+        val selectedMode = result.data
+            ?.getStringExtra(EXTRA_USER_MODE)
+
+        when (selectedMode) {
+            MODE_FREE -> {
+                Toast.makeText(
+                    this,
+                    "Free VPN consent confirmed. Dashboard setup is next.",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+
+            MODE_VIP -> {
+                Toast.makeText(
+                    this,
+                    "VIP consent confirmed. Login setup is next.",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+
+            else -> {
+                Toast.makeText(
+                    this,
+                    "Invalid selection. Please try again.",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -235,47 +289,59 @@ class WelcomeActivity : AppCompatActivity() {
 
     private fun openSelectedMode(mode: String) {
 
+        if (!hasValidConsent()) {
+
+            val privacyIntent = Intent(
+                this,
+                PrivacyActivity::class.java
+            ).apply {
+                putExtra(EXTRA_USER_MODE, mode)
+            }
+
+            privacyLauncher.launch(privacyIntent)
+            return
+        }
+
+        showNextStepMessage(mode)
+    }
+
+    private fun hasValidConsent(): Boolean {
+
         val prefs = getSharedPreferences(
             PREFS_NAME,
             MODE_PRIVATE
         )
 
-        val consentAccepted = prefs.getBoolean(
+        val accepted = prefs.getBoolean(
             "consent_accepted",
             false
         )
 
-        val savedVersion = prefs.getString(
+        val version = prefs.getString(
             "policy_version",
             null
         )
 
-        if (!consentAccepted || savedVersion != POLICY_VERSION) {
+        return accepted && version == POLICY_VERSION
+    }
 
-            val intent = Intent(
-                this,
-                PrivacyActivity::class.java
-            )
+    private fun showNextStepMessage(mode: String) {
 
-            intent.putExtra(EXTRA_USER_MODE, mode)
-            startActivity(intent)
-            return
-        }
+        val message = when (mode) {
+            MODE_FREE ->
+                "Free VPN consent confirmed. Dashboard setup is next."
 
-        // Consent exists, but navigation to VPN/Login
-        // will be enabled only after the full consent
-        // and destination flow is implemented.
+            MODE_VIP ->
+                "VIP consent confirmed. Login setup is next."
 
-        val message = if (mode == MODE_FREE) {
-            "Free VPN setup is coming next."
-        } else {
-            "VIP login setup is coming next."
+            else ->
+                "Invalid selection. Please try again."
         }
 
         Toast.makeText(
             this,
             message,
-            Toast.LENGTH_SHORT
+            Toast.LENGTH_LONG
         ).show()
     }
 
