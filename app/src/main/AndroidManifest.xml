@@ -1,46 +1,77 @@
+
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Network Permissions -->
+    <uses-permission
+        android:name="android.permission.INTERNET" />
+
+    <uses-permission
+        android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- VPN Foreground Service -->
+    <uses-permission
+        android:name="android.permission.FOREGROUND_SERVICE" />
+
+    <!-- Android 13+ Notification Permission -->
+    <uses-permission
+        android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:icon="@drawable/ic_a3s_shield_logo"
-        android:label="A3S FAST VPN"
         android:roundIcon="@drawable/ic_a3s_shield_logo"
+        android:label="A3S FAST VPN"
         android:supportsRtl="true"
         android:theme="@style/Theme.MaterialComponents.DayNight.NoActionBar"
-        android:usesCleartextTraffic="true"
-        tools:targetApi="31">
+        android:usesCleartextTraffic="false"
+        tools:targetApi="34">
 
-        <!-- Splash Activity (First Launch Screen) -->
+        <!-- Splash Screen -->
         <activity
             android:name=".SplashActivity"
             android:exported="true">
+
             <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
+                <action
+                    android:name="android.intent.action.MAIN" />
+
+                <category
+                    android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
         </activity>
 
-        <activity android:name=".LoginActivity" android:exported="false" />
-        <activity android:name=".MainActivity" android:exported="false" />
-        <activity android:name=".SpeedTestActivity" android:exported="false" />
-        <activity android:name=".ToolsActivity" android:exported="false" />
+        <!-- Existing Activities -->
+        <activity
+            android:name=".LoginActivity"
+            android:exported="false" />
 
-        <!-- WireGuard VPN Service Declaration with android:exported for Android 12+ -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".SpeedTestActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".ToolsActivity"
+            android:exported="false" />
+
+        <!-- WireGuard VPN Service -->
         <service
             android:name="com.wireguard.android.backend.GoBackend$VpnService"
             android:exported="false"
             android:permission="android.permission.BIND_VPN_SERVICE"
             tools:replace="android:exported">
+
             <intent-filter>
-                <action android:name="android.net.VpnService" />
+                <action
+                    android:name="android.net.VpnService" />
             </intent-filter>
+
         </service>
 
     </application>
