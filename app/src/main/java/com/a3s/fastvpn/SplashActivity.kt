@@ -82,7 +82,7 @@ class SplashActivity : AppCompatActivity() {
 
         val intent = Intent(
             this,
-            LoginActivity::class.java
+            WelcomeActivity::class.java
         )
 
         intent.flags =
