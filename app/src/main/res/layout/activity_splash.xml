@@ -11,7 +11,7 @@
         android:layout_height="300dp"
         android:layout_centerHorizontal="true"
         android:layout_marginTop="90dp"
-        android:background="@drawable/bg_splash_glow"
+        android:background="#402022"
         android:alpha="0.8" />
 
     <!-- Center Logo & Branding -->
