@@ -1,12 +1,12 @@
 package com.a3s.fastvpn
 
+import android.content.Intent
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.view.Gravity
-import android.view.View
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -16,6 +16,15 @@ import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.button.MaterialButton
 
 class WelcomeActivity : AppCompatActivity() {
+
+    companion object {
+        const val EXTRA_USER_MODE = "a3s_user_mode"
+        const val MODE_FREE = "free"
+        const val MODE_VIP = "vip"
+
+        private const val PREFS_NAME = "a3s_privacy_prefs"
+        private const val POLICY_VERSION = "draft-1"
+    }
 
     private val backgroundColor = Color.rgb(18, 13, 19)
     private val goldColor = Color.rgb(245, 198, 90)
@@ -161,11 +170,7 @@ class WelcomeActivity : AppCompatActivity() {
             setTextColor(backgroundColor)
 
             setOnClickListener {
-                Toast.makeText(
-                    this@WelcomeActivity,
-                    "Privacy consent setup coming next",
-                    Toast.LENGTH_SHORT
-                ).show()
+                openSelectedMode(MODE_FREE)
             }
         }
 
@@ -190,11 +195,7 @@ class WelcomeActivity : AppCompatActivity() {
             setTextColor(goldColor)
 
             setOnClickListener {
-                Toast.makeText(
-                    this@WelcomeActivity,
-                    "VIP login setup coming next",
-                    Toast.LENGTH_SHORT
-                ).show()
+                openSelectedMode(MODE_VIP)
             }
         }
 
@@ -230,6 +231,52 @@ class WelcomeActivity : AppCompatActivity() {
 
         scrollView.addView(root)
         setContentView(scrollView)
+    }
+
+    private fun openSelectedMode(mode: String) {
+
+        val prefs = getSharedPreferences(
+            PREFS_NAME,
+            MODE_PRIVATE
+        )
+
+        val consentAccepted = prefs.getBoolean(
+            "consent_accepted",
+            false
+        )
+
+        val savedVersion = prefs.getString(
+            "policy_version",
+            null
+        )
+
+        if (!consentAccepted || savedVersion != POLICY_VERSION) {
+
+            val intent = Intent(
+                this,
+                PrivacyActivity::class.java
+            )
+
+            intent.putExtra(EXTRA_USER_MODE, mode)
+            startActivity(intent)
+            return
+        }
+
+        // Consent exists, but navigation to VPN/Login
+        // will be enabled only after the full consent
+        // and destination flow is implemented.
+
+        val message = if (mode == MODE_FREE) {
+            "Free VPN setup is coming next."
+        } else {
+            "VIP login setup is coming next."
+        }
+
+        Toast.makeText(
+            this,
+            message,
+            Toast.LENGTH_SHORT
+        ).show()
     }
 
     private fun dp(value: Int): Int {
