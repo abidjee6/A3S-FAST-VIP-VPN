@@ -470,7 +470,7 @@ class MainActivity : AppCompatActivity() {
                             val json = JSONObject(res)
 
                             if (
-                                json.optString("status") == "success"
+                                json.has("ip")
                             ) {
                                 val ip = json.optString(
                                     "ip",
