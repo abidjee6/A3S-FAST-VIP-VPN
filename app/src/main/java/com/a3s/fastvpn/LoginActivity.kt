@@ -73,7 +73,7 @@ class LoginActivity : AppCompatActivity() {
 
                         try {
                             val json = JSONObject(rawResponse)
-                            val isSuccess = json.optBoolean("success", false) || response.isSuccessful
+                            val isSuccess = response.isSuccessful && json.optBoolean("success", false)
 
                             if (isSuccess && !json.has("error")) {
                                 val userObj = json.optJSONObject("user")
