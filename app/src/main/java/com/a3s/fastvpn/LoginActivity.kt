@@ -18,7 +18,7 @@ import java.io.IOException
 class LoginActivity : AppCompatActivity() {
 
     private val httpClient = OkHttpClient()
-    private val BASE_URL = "http://2.31.89.14:3000"
+    private val BASE_URL = "https://2.31.89.14:8443"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
