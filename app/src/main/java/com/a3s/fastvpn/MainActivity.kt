@@ -449,7 +449,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun fetchPublicIp() {
         val request = Request.Builder()
-            .url("http://ip-api.com/json/?fields=status,country,query")
+            .url("https://api.ipify.org?format=json")
             .build()
 
         httpClient.newCall(request).enqueue(
@@ -473,7 +473,7 @@ class MainActivity : AppCompatActivity() {
                                 json.optString("status") == "success"
                             ) {
                                 val ip = json.optString(
-                                    "query",
+                                    "ip",
                                     "Unknown"
                                 )
 
