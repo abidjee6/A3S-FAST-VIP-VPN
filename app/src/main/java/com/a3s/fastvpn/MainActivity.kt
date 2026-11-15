@@ -232,46 +232,53 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startTunnelConnectingFlow() {
-        if (!enforcePrivacyConsent()) return
+        if (!enforcePrivacyConsent() || isConnecting || isConnected) return
 
-        initWireGuardBackend()
-
-        val prefs = getSharedPreferences(
-            "a3s_vpn_prefs",
-            Context.MODE_PRIVATE
-        )
-
-        var configStr = prefs.getString("wg_config", "") ?: ""
-
-        if (configStr.isEmpty()) {
-            Toast.makeText(
-                this,
-                "کنفیگریشن موجود نہیں، دوبارہ لاگ ان کریں",
-                Toast.LENGTH_LONG
-            ).show()
+        val server = selectedServer
+        if (server == null || !isUsableServer(server)) {
+            Toast.makeText(this, "No valid VPN server available. Refresh the server list.", Toast.LENGTH_LONG).show()
             return
         }
 
-        // Add DNS if missing
-        if (!configStr.contains("DNS =") &&
-            !configStr.contains("DNS=")
-        ) {
-            configStr = configStr.replace(
-                "[Interface]",
-                "[Interface]\nDNS = 1.1.1.1, 8.8.8.8\n"
-            )
+        initWireGuardBackend()
+        val backend = wgBackend
+        if (backend == null) {
+            Toast.makeText(this, "WireGuard backend is unavailable.", Toast.LENGTH_LONG).show()
+            return
         }
 
-        // Existing endpoint replacement logic
-        selectedServer?.let { server ->
-            if (server.endpoint.isNotEmpty() &&
-                configStr.contains("Endpoint =")
-            ) {
-                configStr = configStr.replace(
-                    Regex("Endpoint\\s*=.*"),
-                    "Endpoint = ${server.endpoint}"
-                )
+        val prefs = getSharedPreferences("a3s_vpn_prefs", Context.MODE_PRIVATE)
+        var configStr = prefs.getString("wg_config", "") ?: ""
+        if (configStr.isBlank()) {
+            Toast.makeText(this, "VPN configuration missing. Please log in again.", Toast.LENGTH_LONG).show()
+            return
+        }
+
+        // The login configuration is the source of the user's private key and address.
+        // Only replace the remote peer endpoint and public key for the chosen server.
+        // Do not replace the client address with ServerModel's placeholder clientIp.
+        try {
+            val peerCount = Regex("(?m)^\\s*\\[Peer]\\s*$").findAll(configStr).count()
+            if (peerCount != 1) {
+                throw IllegalArgumentException("Expected exactly one WireGuard peer")
             }
+
+            if (!Regex("(?m)^\\s*DNS\\s*=").containsMatchIn(configStr)) {
+                configStr = configStr.replaceFirst("[Interface]", "[Interface]\nDNS = 1.1.1.1, 8.8.8.8")
+            }
+
+            val endpointPattern = Regex("(?m)^\\s*Endpoint\\s*=.*$")
+            val publicKeyPattern = Regex("(?m)^\\s*PublicKey\\s*=.*$")
+            if (!endpointPattern.containsMatchIn(configStr) ||
+                !publicKeyPattern.containsMatchIn(configStr)) {
+                throw IllegalArgumentException("VPN peer endpoint or public key missing")
+            }
+
+            configStr = endpointPattern.replace(configStr, "Endpoint = ${server.endpoint.trim()}")
+            configStr = publicKeyPattern.replace(configStr, "PublicKey = ${server.publicKey.trim()}")
+        } catch (e: Exception) {
+            Toast.makeText(this, "Invalid VPN configuration: ${e.message}", Toast.LENGTH_LONG).show()
+            return
         }
 
         isConnecting = true
@@ -281,85 +288,64 @@ class MainActivity : AppCompatActivity() {
 
         mainHandler.postDelayed({
             if (!hasValidPrivacyConsent()) {
-                isConnecting = false
+                setDisconnectedUi()
                 enforcePrivacyConsent()
                 return@postDelayed
             }
 
             try {
                 val config = Config.parse(
-                    ByteArrayInputStream(
-                        configStr.toByteArray(StandardCharsets.UTF_8)
-                    )
+                    ByteArrayInputStream(configStr.toByteArray(StandardCharsets.UTF_8))
                 )
-
-                if (wgBackend == null) {
-                    initWireGuardBackend()
+                val state = backend.setState(activeTunnel, Tunnel.State.UP, config)
+                if (state != Tunnel.State.UP || backend.getState(activeTunnel) != Tunnel.State.UP) {
+                    throw IllegalStateException("WireGuard tunnel did not start")
                 }
-
-                wgBackend?.setState(
-                    activeTunnel,
-                    Tunnel.State.UP,
-                    config
-                )
 
                 startRxBytes = TrafficStats.getTotalRxBytes()
                 startTxBytes = TrafficStats.getTotalTxBytes()
-
                 setConnectedUi()
-
-                Toast.makeText(
-                    this,
-                    "A3S FAST VIP VPN Connected!",
-                    Toast.LENGTH_SHORT
-                ).show()
-
+                Toast.makeText(this, "WireGuard tunnel started", Toast.LENGTH_SHORT).show()
                 tvPublicIp.text = "Resolving..."
-
                 mainHandler.postDelayed({
-                    fetchPublicIp()
-                    measurePing()
+                    if (isConnected) {
+                        fetchPublicIp()
+                        measurePing()
+                    }
                 }, 2000)
-
             } catch (e: Exception) {
-                isConnecting = false
                 setDisconnectedUi()
-
-                Toast.makeText(
-                    this,
-                    "ٹنل شروع نہ ہو سکی: ${e.message}",
-                    Toast.LENGTH_LONG
-                ).show()
+                Toast.makeText(this, "VPN connection failed: ${e.message}", Toast.LENGTH_LONG).show()
             }
         }, 1500)
     }
 
-    private fun disconnectVpnTunnel() {
+    private fun disconnectVpnTunnel(): Boolean {
         initWireGuardBackend()
-
-        try {
-            wgBackend?.setState(
-                activeTunnel,
-                Tunnel.State.DOWN,
-                null
-            )
-        } catch (e: Exception) {
-            e.printStackTrace()
+        val backend = wgBackend
+        if (backend == null) {
+            Toast.makeText(this, "WireGuard backend unavailable", Toast.LENGTH_LONG).show()
+            return false
         }
 
-        setDisconnectedUi()
-        tvPublicIp.text = "Reverting..."
-
-        mainHandler.postDelayed({
-            fetchPublicIp()
-            measurePing()
-        }, 1500)
-
-        Toast.makeText(
-            this,
-            "وی پی این منقطع کر دیا گیا",
-            Toast.LENGTH_SHORT
-        ).show()
+        return try {
+            val state = backend.setState(activeTunnel, Tunnel.State.DOWN, null)
+            if (state != Tunnel.State.DOWN || backend.getState(activeTunnel) != Tunnel.State.DOWN) {
+                throw IllegalStateException("Tunnel is still active")
+            }
+            setDisconnectedUi()
+            tvPublicIp.text = "Reverting..."
+            mainHandler.postDelayed({
+                fetchPublicIp()
+                measurePing()
+            }, 1500)
+            Toast.makeText(this, "VPN disconnected", Toast.LENGTH_SHORT).show()
+            true
+        } catch (e: Exception) {
+            Toast.makeText(this, "Disconnect failed: ${e.message}", Toast.LENGTH_LONG).show()
+            checkLiveTunnelState()
+            false
+        }
     }
 
     private fun setConnectedUi() {
@@ -525,6 +511,17 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
+    private fun isUsableServer(server: ServerModel): Boolean {
+        val endpoint = server.endpoint.trim()
+        val key = server.publicKey.trim()
+        // Avoid selecting placeholder entries or incomplete server records.
+        return endpoint.isNotEmpty() &&
+            endpoint.contains(":") &&
+            !endpoint.any { it.isWhitespace() } &&
+            key.isNotEmpty() &&
+            key.length == 44
+    }
+
     private fun loadServersFromDatabase() {
         val request = Request.Builder()
             .url("$BASE_URL/api/servers")
@@ -532,166 +529,101 @@ class MainActivity : AppCompatActivity() {
             .addHeader("Accept", "application/json")
             .build()
 
-        httpClient.newCall(request).enqueue(
-            object : Callback {
-                override fun onFailure(
-                    call: Call,
-                    e: IOException
-                ) {
-                    runOnUiThread {
-                        setupDefaultServers()
-                    }
+        httpClient.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                runOnUiThread { handleServerLoadFailure() }
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                val successful = response.isSuccessful
+                val responseData = response.use { it.body?.string() ?: "" }
+                if (!successful) {
+                    runOnUiThread { handleServerLoadFailure() }
+                    return
                 }
 
-                override fun onResponse(
-                    call: Call,
-                    response: Response
-                ) {
-                    val responseData = response.use {
-                        it.body?.string() ?: ""
+                try {
+                    val arr = if (responseData.trim().startsWith("[")) {
+                        JSONArray(responseData)
+                    } else {
+                        val obj = JSONObject(responseData)
+                        obj.optJSONArray("servers") ?: obj.optJSONArray("data")
+                            ?: throw IllegalArgumentException("Server list missing")
                     }
 
-                    try {
-                        val list = ArrayList<ServerModel>()
+                    val list = ArrayList<ServerModel>()
+                    for (i in 0 until arr.length()) {
+                        val server = ServerModel.fromJson(arr.getJSONObject(i))
+                        if (isUsableServer(server)) list.add(server)
+                    }
 
-                        if (responseData.trim().startsWith("[")) {
-                            val arr = JSONArray(responseData)
-
-                            for (i in 0 until arr.length()) {
-                                list.add(
-                                    ServerModel.fromJson(
-                                        arr.getJSONObject(i)
-                                    )
-                                )
-                            }
-                        } else if (
-                            responseData.trim().startsWith("{")
-                        ) {
-                            val obj = JSONObject(responseData)
-
-                            val arr =
-                                obj.optJSONArray("servers")
-                                    ?: obj.optJSONArray("data")
-
-                            if (arr != null) {
-                                for (i in 0 until arr.length()) {
-                                    list.add(
-                                        ServerModel.fromJson(
-                                            arr.getJSONObject(i)
-                                        )
-                                    )
-                                }
-                            }
-                        }
-
-                        runOnUiThread {
-                            serverList.clear()
-
-                            if (list.isNotEmpty()) {
-                                serverList.addAll(list)
-                            } else {
-                                setupDefaultServers()
-                            }
-
-                            selectedServer =
-                                serverList.firstOrNull()
-
-                            updateSelectedServerUi()
-                        }
-
-                    } catch (e: Exception) {
-                        runOnUiThread {
-                            setupDefaultServers()
+                    runOnUiThread {
+                        // Never replace a selected server while its tunnel is active.
+                        if (isConnected || isConnecting) return@runOnUiThread
+                        val previousId = selectedServer?.id
+                        serverList.clear()
+                        serverList.addAll(list)
+                        selectedServer = serverList.firstOrNull { it.id == previousId }
+                            ?: serverList.firstOrNull { it.country.equals("Germany", true) }
+                            ?: serverList.firstOrNull()
+                        updateSelectedServerUi()
+                        if (serverList.isEmpty()) {
+                            Toast.makeText(this@MainActivity, "No valid VPN servers returned by backend", Toast.LENGTH_LONG).show()
                         }
                     }
+                } catch (e: Exception) {
+                    runOnUiThread { handleServerLoadFailure() }
                 }
             }
-        )
+        })
     }
 
-    private fun setupDefaultServers() {
-        serverList.clear()
-
-        serverList.add(
-            ServerModel(
-                "1",
-                "Germany (VIP)",
-                "Germany",
-                "🇩🇪",
-                "2.31.89.14:51820",
-                "",
-                "10.0.0.2/32",
-                "1.1.1.1",
-                true,
-                42
-            )
-        )
-
-        serverList.add(
-            ServerModel(
-                "2",
-                "Netherlands (Free)",
-                "Netherlands",
-                "🇳🇱",
-                "2.31.89.14:51821",
-                "",
-                "10.0.0.3/32",
-                "1.1.1.1",
-                false,
-                65
-            )
-        )
-
-        serverList.add(
-            ServerModel(
-                "3",
-                "USA - New York",
-                "United States",
-                "🇺🇸",
-                "2.31.89.14:51822",
-                "",
-                "10.0.0.4/32",
-                "1.1.1.1",
-                true,
-                110
-            )
-        )
-
-        selectedServer = serverList.firstOrNull()
-        updateSelectedServerUi()
+    private fun handleServerLoadFailure() {
+        // No fabricated Netherlands/USA servers. Keep a previously loaded list,
+        // but do not invent endpoints or public keys when the API is unavailable.
+        if (serverList.isEmpty()) {
+            selectedServer = null
+            updateSelectedServerUi()
+        }
+        Toast.makeText(this, "Could not load VPN servers. Check internet and reopen the app.", Toast.LENGTH_LONG).show()
     }
 
     private fun updateSelectedServerUi() {
-        selectedServer?.let {
-            tvSelectedServer.text = "${it.flag} ${it.name}"
-            tvPing.text = "${it.ping} ms"
+        val server = selectedServer
+        if (server == null) {
+            tvSelectedServer.text = "No server available"
+            tvPing.text = "-- ms"
+        } else {
+            tvSelectedServer.text = "${server.flag} ${server.name}"
+            tvPing.text = "${server.ping} ms"
         }
     }
 
     private fun showServerSelectionSheet() {
-        val dialog = BottomSheetDialog(this)
+        if (isConnecting) {
+            Toast.makeText(this, "Please wait for connection to finish", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (serverList.isEmpty()) {
+            Toast.makeText(this, "No servers available. Please reopen the app to retry.", Toast.LENGTH_LONG).show()
+            return
+        }
 
+        val dialog = BottomSheetDialog(this)
         val sheetView = LayoutInflater.from(this)
             .inflate(R.layout.bottom_sheet_servers, null)
-
         dialog.setContentView(sheetView)
-
-        val rvServers =
-            sheetView.findViewById<RecyclerView>(R.id.rvServers)
-
+        val rvServers = sheetView.findViewById<RecyclerView>(R.id.rvServers)
         rvServers.layoutManager = LinearLayoutManager(this)
-
-        val adapter = ServerAdapter(serverList) { clickedServer ->
-            if (isConnected) {
-                disconnectVpnTunnel()
+        rvServers.adapter = ServerAdapter(serverList) { clickedServer ->
+            if (isConnected && !disconnectVpnTunnel()) {
+                // Keep current selection if the old tunnel could not be stopped.
+                return@ServerAdapter
             }
-
             selectedServer = clickedServer
             updateSelectedServerUi()
             dialog.dismiss()
         }
-
-        rvServers.adapter = adapter
         dialog.show()
     }
 
@@ -727,8 +659,8 @@ class MainActivity : AppCompatActivity() {
             popupView.findViewById<MaterialButton>(
                 R.id.btnLogout
             ).setOnClickListener {
-                if (isConnected) {
-                    disconnectVpnTunnel()
+                if (isConnected && !disconnectVpnTunnel()) {
+                    return@setOnClickListener
                 }
 
                 prefs.edit().clear().apply()
