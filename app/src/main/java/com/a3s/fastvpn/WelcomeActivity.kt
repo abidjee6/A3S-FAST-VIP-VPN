@@ -59,31 +59,7 @@ class WelcomeActivity : AppCompatActivity() {
         val selectedMode = result.data
             ?.getStringExtra(EXTRA_USER_MODE)
 
-        when (selectedMode) {
-            MODE_FREE -> {
-                Toast.makeText(
-                    this,
-                    "Free VPN consent confirmed. Dashboard setup is next.",
-                    Toast.LENGTH_LONG
-                ).show()
-            }
-
-            MODE_VIP -> {
-                Toast.makeText(
-                    this,
-                    "VIP consent confirmed. Login setup is next.",
-                    Toast.LENGTH_LONG
-                ).show()
-            }
-
-            else -> {
-                Toast.makeText(
-                    this,
-                    "Invalid selection. Please try again.",
-                    Toast.LENGTH_SHORT
-                ).show()
-            }
-        }
+        navigateToSelectedMode(selectedMode)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -302,7 +278,7 @@ class WelcomeActivity : AppCompatActivity() {
             return
         }
 
-        showNextStepMessage(mode)
+        navigateToSelectedMode(mode)
     }
 
     private fun hasValidConsent(): Boolean {
@@ -325,24 +301,28 @@ class WelcomeActivity : AppCompatActivity() {
         return accepted && version == POLICY_VERSION
     }
 
-    private fun showNextStepMessage(mode: String) {
-
-        val message = when (mode) {
-            MODE_FREE ->
-                "Free VPN consent confirmed. Dashboard setup is next."
-
-            MODE_VIP ->
-                "VIP consent confirmed. Login setup is next."
-
-            else ->
-                "Invalid selection. Please try again."
+    private fun navigateToSelectedMode(mode: String?) {
+        if (!hasValidConsent()) {
+            Toast.makeText(this, "Please accept the Privacy Policy first.", Toast.LENGTH_LONG).show()
+            return
         }
 
-        Toast.makeText(
-            this,
-            message,
-            Toast.LENGTH_LONG
-        ).show()
+        when (mode) {
+            MODE_VIP -> {
+                val intent = Intent(this, LoginActivity::class.java)
+                startActivity(intent)
+            }
+            MODE_FREE -> {
+                // Do not bypass authentication or invent WireGuard credentials.
+                // Enable this flow only after a real backend free-user provisioning API exists.
+                Toast.makeText(
+                    this,
+                    "Free VPN setup is not available yet. Please use VIP Login.",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+            else -> Toast.makeText(this, "Invalid selection. Please try again.", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun dp(value: Int): Int {
