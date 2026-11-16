@@ -10,6 +10,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.util.Patterns
 import android.view.LayoutInflater
 import android.view.View
 import android.webkit.WebView
@@ -33,6 +34,7 @@ import java.io.ByteArrayInputStream
 import java.io.IOException
 import java.nio.charset.StandardCharsets
 import java.util.Locale
+import java.util.concurrent.TimeUnit
 
 class MainActivity : AppCompatActivity() {
 
@@ -58,6 +60,12 @@ class MainActivity : AppCompatActivity() {
     private lateinit var bottomNav: BottomNavigationView
 
     private val httpClient = OkHttpClient()
+    private val ipHttpClient = OkHttpClient.Builder()
+        .connectTimeout(8, TimeUnit.SECONDS)
+        .readTimeout(8, TimeUnit.SECONDS)
+        .callTimeout(12, TimeUnit.SECONDS)
+        .build()
+    private var ipRequestGeneration = 0
     private val BASE_URL = "https://2.31.89.14:8443"
 
     private val serverList = ArrayList<ServerModel>()
@@ -349,6 +357,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setConnectedUi() {
+        ipRequestGeneration++ // Invalidate responses from previous connection state.
         isConnected = true
         isConnecting = false
         btnConnect.isEnabled = true
@@ -364,6 +373,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setDisconnectedUi() {
+        ipRequestGeneration++ // Invalidate responses from previous connection state.
         isConnected = false
         isConnecting = false
         btnConnect.isEnabled = true
@@ -434,46 +444,71 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun fetchPublicIp() {
+        val generation = ++ipRequestGeneration
+        val expectedConnected = isConnected
+        tvPublicIp.text = "Resolving..."
+        requestPublicIp(generation, expectedConnected, useFallback = false)
+    }
+
+    private fun requestPublicIp(
+        generation: Int,
+        expectedConnected: Boolean,
+        useFallback: Boolean
+    ) {
+        val url = if (useFallback) {
+            "https://api64.ipify.org"
+        } else {
+            "https://api.ipify.org?format=json"
+        }
+
         val request = Request.Builder()
-            .url("https://api.ipify.org?format=json")
+            .url(url)
+            .header("Accept", if (useFallback) "text/plain" else "application/json")
+            .header("Cache-Control", "no-cache")
             .build()
 
-        httpClient.newCall(request).enqueue(
-            object : Callback {
-                override fun onFailure(
-                    call: Call,
-                    e: IOException
-                ) {}
+        ipHttpClient.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                finishIpAttempt(generation, expectedConnected, useFallback, null)
+            }
 
-                override fun onResponse(
-                    call: Call,
-                    response: Response
-                ) {
+            override fun onResponse(call: Call, response: Response) {
+                val ip = try {
                     response.use {
-                        val res = it.body?.string() ?: ""
-
-                        try {
-                            val json = JSONObject(res)
-
-                            if (
-                                json.has("ip")
-                            ) {
-                                val ip = json.optString(
-                                    "ip",
-                                    "Unknown"
-                                )
-
-                                runOnUiThread {
-                                    tvPublicIp.text = ip
-                                }
+                        if (!it.isSuccessful) null
+                        else {
+                            val raw = it.body?.string()?.trim().orEmpty()
+                            val candidate = if (useFallback) raw
+                                else JSONObject(raw).optString("ip", "")
+                            candidate.takeIf { value ->
+                                value.isNotBlank() && Patterns.IP_ADDRESS.matcher(value).matches()
                             }
-                        } catch (e: Exception) {
-                            // Ignore malformed response
                         }
                     }
+                } catch (e: Exception) {
+                    null
                 }
+                finishIpAttempt(generation, expectedConnected, useFallback, ip)
             }
-        )
+        })
+    }
+
+    private fun finishIpAttempt(
+        generation: Int,
+        expectedConnected: Boolean,
+        usedFallback: Boolean,
+        ip: String?
+    ) {
+        runOnUiThread {
+            if (isFinishing || isDestroyed || generation != ipRequestGeneration ||
+                expectedConnected != isConnected) return@runOnUiThread
+
+            when {
+                ip != null -> tvPublicIp.text = ip
+                !usedFallback -> requestPublicIp(generation, expectedConnected, useFallback = true)
+                else -> tvPublicIp.text = "IP Unavailable"
+            }
+        }
     }
 
     private fun measurePing() {
@@ -753,6 +788,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        ipRequestGeneration++
+        ipHttpClient.dispatcher.cancelAll()
         super.onDestroy()
         mainHandler.removeCallbacks(timerRunnable)
     }
