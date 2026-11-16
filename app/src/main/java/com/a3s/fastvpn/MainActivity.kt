@@ -448,6 +448,17 @@ class MainActivity : AppCompatActivity() {
         val expectedConnected = isConnected
         tvPublicIp.text = "Resolving..."
         requestPublicIp(generation, expectedConnected, useFallback = false)
+
+        // A visible diagnostic even if a callback never updates the screen.
+        mainHandler.postDelayed({
+            if (!isFinishing && !isDestroyed &&
+                generation == ipRequestGeneration && expectedConnected == isConnected &&
+                (tvPublicIp.text.toString() == "Resolving..." ||
+                 tvPublicIp.text.toString().startsWith("Trying backup"))) {
+                tvPublicIp.text = "IP timeout / callback missing"
+                Toast.makeText(this, "IP diagnostic: no completed response after 30 seconds", Toast.LENGTH_LONG).show()
+            }
+        }, 30000)
     }
 
     private fun requestPublicIp(
@@ -460,7 +471,7 @@ class MainActivity : AppCompatActivity() {
         } else {
             "https://api.ipify.org?format=json"
         }
-
+        val source = if (useFallback) "Backup" else "Primary"
         val request = Request.Builder()
             .url(url)
             .header("Accept", if (useFallback) "text/plain" else "application/json")
@@ -469,26 +480,33 @@ class MainActivity : AppCompatActivity() {
 
         ipHttpClient.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                finishIpAttempt(generation, expectedConnected, useFallback, null)
+                val detail = "${e.javaClass.simpleName}: ${e.message.orEmpty()}"
+                finishIpAttempt(generation, expectedConnected, useFallback, null, "$source network: $detail")
             }
 
             override fun onResponse(call: Call, response: Response) {
+                var error = "$source: empty response"
                 val ip = try {
                     response.use {
-                        if (!it.isSuccessful) null
-                        else {
+                        if (!it.isSuccessful) {
+                            error = "$source HTTP ${it.code}"
+                            null
+                        } else {
                             val raw = it.body?.string()?.trim().orEmpty()
                             val candidate = if (useFallback) raw
                                 else JSONObject(raw).optString("ip", "")
                             candidate.takeIf { value ->
                                 value.isNotBlank() && Patterns.IP_ADDRESS.matcher(value).matches()
+                            }.also { valid ->
+                                if (valid == null) error = "$source: invalid IP response"
                             }
                         }
                     }
                 } catch (e: Exception) {
+                    error = "$source parse: ${e.javaClass.simpleName}: ${e.message.orEmpty()}"
                     null
                 }
-                finishIpAttempt(generation, expectedConnected, useFallback, ip)
+                finishIpAttempt(generation, expectedConnected, useFallback, ip, error)
             }
         })
     }
@@ -497,7 +515,8 @@ class MainActivity : AppCompatActivity() {
         generation: Int,
         expectedConnected: Boolean,
         usedFallback: Boolean,
-        ip: String?
+        ip: String?,
+        error: String
     ) {
         runOnUiThread {
             if (isFinishing || isDestroyed || generation != ipRequestGeneration ||
@@ -505,8 +524,15 @@ class MainActivity : AppCompatActivity() {
 
             when {
                 ip != null -> tvPublicIp.text = ip
-                !usedFallback -> requestPublicIp(generation, expectedConnected, useFallback = true)
-                else -> tvPublicIp.text = "IP Unavailable"
+                !usedFallback -> {
+                    tvPublicIp.text = "Trying backup IP service..."
+                    requestPublicIp(generation, expectedConnected, useFallback = true)
+                }
+                else -> {
+                    val summary = error.take(120)
+                    tvPublicIp.text = "IP error: $summary"
+                    Toast.makeText(this, "IP diagnostic: $summary", Toast.LENGTH_LONG).show()
+                }
             }
         }
     }
